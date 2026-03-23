@@ -62,6 +62,20 @@ async def init_db():
         """)
         await db.commit()
  
+        # ===== MIGRATION: eski DB ga yangi ustunlar qo'shish =====
+        try:
+            await db.execute("ALTER TABLE tests ADD COLUMN deadline TEXT DEFAULT NULL")
+            await db.commit()
+        except Exception:
+            pass  # Ustun allaqachon mavjud
+ 
+        try:
+            await db.execute("ALTER TABLE results ADD COLUMN user_answers TEXT DEFAULT ''")
+            await db.commit()
+        except Exception:
+            pass  # Ustun allaqachon mavjud
+        # ===== MIGRATION END =====
+ 
         # Config kanallarini import
         async with db.execute("SELECT COUNT(*) FROM channels WHERE ch_type='required'") as cur:
             count = (await cur.fetchone())[0]
