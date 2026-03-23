@@ -18,6 +18,6 @@ REQUIRED_CHANNELS = [
     },
 ]
 
-DB_PATH = os.getenv("DB_PATH", "/app/data/testbot.db")
+DB_PATH = "testbot.db"
 CERT_DIR = "certificates"
 DEFAULT_AUTHOR = "Test Muallifi"
