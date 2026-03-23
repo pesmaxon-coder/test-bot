@@ -23,11 +23,12 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
  
-    # Admin router birinchi bo'lishi kerak
-    dp.include_router(admin_router)
-    dp.include_router(reg_router)
+    # MUHIM: test_router BIRINCHI bo'lishi kerak!
+    # StateFilter bilan ishlaydi — deadline state da barcha xabarlar ushlaydi
     dp.include_router(test_router)
+    dp.include_router(reg_router)
     dp.include_router(settings_router)
+    dp.include_router(admin_router)
  
     logging.info("✅ Bot ishga tushdi!")
     await dp.start_polling(bot)
