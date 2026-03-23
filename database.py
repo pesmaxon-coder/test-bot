@@ -205,3 +205,54 @@ async def delete_channel(ch_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM channels WHERE id = ?", (ch_id,))
         await db.commit()
+ 
+ 
+# ============ ADMINLAR ============
+ 
+async def get_admins():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                id INTEGER PRIMARY KEY,
+                full_name TEXT,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.commit()
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM admins ORDER BY added_at") as cur:
+            return await cur.fetchall()
+ 
+ 
+async def add_admin(user_id: int, full_name: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                id INTEGER PRIMARY KEY,
+                full_name TEXT,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute(
+            "INSERT OR IGNORE INTO admins (id, full_name) VALUES (?, ?)",
+            (user_id, full_name)
+        )
+        await db.commit()
+ 
+ 
+async def remove_admin(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM admins WHERE id = ?", (user_id,))
+        await db.commit()
+ 
+ 
+async def is_admin_db(user_id: int) -> bool:
+    from config import ADMIN_IDS
+    if user_id in ADMIN_IDS:
+        return True
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id FROM admins WHERE id = ?", (user_id,)
+        ) as cur:
+            return await cur.fetchone() is not None
+ 
