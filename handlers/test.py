@@ -6,6 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.types import KeyboardButton, BufferedInputFile
 from aiogram.filters import StateFilter
 from datetime import datetime
+import re
  
 import database as db
 from keyboards import main_menu_kb, test_type_kb, cancel_kb, back_kb
@@ -14,8 +15,6 @@ from handlers.registration import check_subscriptions
  
 router = Router()
  
- 
-# ============ STATES ============
  
 class CreateTest(StatesGroup):
     choose_type = State()
@@ -32,7 +31,6 @@ class SolveTest(StatesGroup):
 # ============ YORDAMCHI ============
  
 def normalize_answers(text: str) -> list:
-    import re
     return re.findall(r'[ABCDE]', text.upper())
  
  
@@ -58,21 +56,21 @@ def is_deadline_passed(deadline_str) -> bool:
 async def ensure_registered(message: Message, bot: Bot) -> bool:
     user = await db.get_user(message.from_user.id)
     if not user:
-        await message.answer("❗ Avval /start bosing va ro'yxatdan o'ting!")
+        await message.answer("❗ Avval /start bosing!")
         return False
     if not await check_subscriptions(bot, message.from_user.id):
         from keyboards import subscription_kb
-        await message.answer("❌ Botdan foydalanish uchun kanallarga a'zo bo'ling!",
-                             reply_markup=subscription_kb())
+        await message.answer("❌ Kanallarga a'zo bo'ling!", reply_markup=subscription_kb())
         return False
     return True
  
  
-def deadline_ask_kb():
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="⏭ Deadline yo'q"))
-    builder.row(KeyboardButton(text="❌ Bekor qilish"))
-    return builder.as_markup(resize_keyboard=True)
+def deadline_kb():
+    b = ReplyKeyboardBuilder()
+    b.button(text="♾ Deadline kerak emas")
+    b.button(text="🚫 Bekor qilish")
+    b.adjust(1)
+    return b.as_markup(resize_keyboard=True)
  
  
 # ============ TEST YARATISH ============
@@ -94,20 +92,23 @@ async def choose_test_type(message: Message, state: FSMContext):
     await state.update_data(test_type=message.text)
     await state.set_state(CreateTest.title)
     await message.answer(
-        "📌 Test nomini (fanini) kiriting:\nMasalan: Matematika, Ingliz tili",
+        "📌 Test nomini kiriting:\nMasalan: Matematika, Ingliz tili",
         reply_markup=cancel_kb()
     )
  
  
-@router.message(StateFilter(CreateTest.choose_type), F.text == "🔄 Orqaga")
-async def back_from_type(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("🏠 Bosh sahifa.", reply_markup=main_menu_kb())
+@router.message(StateFilter(CreateTest.choose_type))
+async def choose_type_any(message: Message, state: FSMContext):
+    if message.text == "🔄 Orqaga" or message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("🏠 Bosh sahifa.", reply_markup=main_menu_kb())
+    else:
+        await message.answer("❗ Tugmalardan birini tanlang.", reply_markup=test_type_kb())
  
  
 @router.message(StateFilter(CreateTest.title))
 async def get_test_title(message: Message, state: FSMContext):
-    if message.text == "❌ Bekor qilish":
+    if message.text in ["❌ Bekor qilish", "🔄 Orqaga", "🚫 Bekor qilish"]:
         await state.clear()
         await message.answer("❌ Bekor qilindi.", reply_markup=main_menu_kb())
         return
@@ -125,14 +126,14 @@ async def get_test_title(message: Message, state: FSMContext):
  
 @router.message(StateFilter(CreateTest.answers))
 async def get_test_answers(message: Message, state: FSMContext):
-    if message.text == "❌ Bekor qilish":
+    if message.text in ["❌ Bekor qilish", "🔄 Orqaga", "🚫 Bekor qilish"]:
         await state.clear()
         await message.answer("❌ Bekor qilindi.", reply_markup=main_menu_kb())
         return
  
     answers = normalize_answers(message.text)
     if len(answers) < 5:
-        await message.answer("❌ Kamida 5 ta savol bo'lishi kerak! Qayta yuboring.")
+        await message.answer("❌ Kamida 5 ta javob kiriting! Masalan: ABCDE")
         return
     if len(answers) > 200:
         await message.answer("❌ Ko'pi bilan 200 ta savol bo'lishi mumkin!")
@@ -142,20 +143,22 @@ async def get_test_answers(message: Message, state: FSMContext):
     await state.set_state(CreateTest.deadline)
  
     await message.answer(
-        f"✅ {len(answers)} ta javob qabul qilindi!\n\n"
+        f"✅ <b>{len(answers)} ta javob</b> qabul qilindi!\n\n"
         "⏰ <b>Deadline belgilash</b>\n\n"
         "Test qachon yopilishini kiriting:\n"
-        "📅 Format: <b>25.12.2024</b>\n"
+        "📅 Kun: <b>25.12.2024</b>\n"
         "🕐 Vaqt bilan: <b>25.12.2024 18:00</b>\n\n"
-        "Deadline kerak bo'lmasa — <b>⏭ Deadline yo'q</b> tugmasini bosing.",
-        reply_markup=deadline_ask_kb(),
+        "Deadline kerak bo'lmasa — quyidagi tugmani bosing:",
+        reply_markup=deadline_kb(),
         parse_mode="HTML"
     )
  
  
+# ===== DEADLINE STATE — BARCHA MATNLARNI USHLAYDI =====
 @router.message(StateFilter(CreateTest.deadline))
 async def get_test_deadline(message: Message, state: FSMContext):
-    if message.text == "❌ Bekor qilish":
+    # Bekor qilish
+    if message.text in ["🚫 Bekor qilish", "❌ Bekor qilish", "🔄 Orqaga"]:
         await state.clear()
         await message.answer("❌ Bekor qilindi.", reply_markup=main_menu_kb())
         return
@@ -163,28 +166,32 @@ async def get_test_deadline(message: Message, state: FSMContext):
     data = await state.get_data()
     deadline_str = None
  
-    if message.text == "⏭ Deadline yo'q":
+    # Deadline yo'q tugmasi
+    if message.text == "♾ Deadline kerak emas":
         deadline_str = None
     else:
+        # Sana parse qilish
         deadline = parse_deadline(message.text)
-        if not deadline:
+        if deadline is None:
             await message.answer(
-                "❌ Noto'g'ri format!\n\n"
-                "To'g'ri formatlar:\n"
-                "📅 <b>25.12.2024</b>\n"
-                "🕐 <b>25.12.2024 18:00</b>\n\n"
-                "Yoki deadline kerak bo'lmasa <b>⏭ Deadline yo'q</b> ni bosing.",
-                reply_markup=deadline_ask_kb(),
+                "❌ <b>Noto'g'ri format!</b>\n\n"
+                "Quyidagi formatlardan birini ishlating:\n"
+                "📅 <code>25.12.2024</code>\n"
+                "🕐 <code>25.12.2024 18:00</code>\n\n"
+                "Deadline kerak bo'lmasa — <b>♾ Deadline kerak emas</b> tugmasini bosing.",
+                reply_markup=deadline_kb(),
                 parse_mode="HTML"
             )
             return
+ 
         if deadline < datetime.now():
             await message.answer(
-                "❌ Bu sana allaqachon o'tib ketgan!\n"
+                "❌ Bu sana o'tib ketgan!\n"
                 "Kelajakdagi sana kiriting.",
-                reply_markup=deadline_ask_kb()
+                reply_markup=deadline_kb()
             )
             return
+ 
         deadline_str = deadline.strftime("%d.%m.%Y %H:%M")
  
     # Test saqlash
@@ -200,16 +207,15 @@ async def get_test_deadline(message: Message, state: FSMContext):
     )
     await state.clear()
  
-    deadline_info = f"⏰ Deadline: <b>{deadline_str}</b>" if deadline_str else "⏰ Deadline: <b>Yo'q (cheksiz)</b>"
+    dl_text = f"⏰ Deadline: <b>{deadline_str}</b>" if deadline_str else "♾ Deadline: <b>Yo'q (cheksiz)</b>"
  
     await message.answer(
-        f"✅ <b>Test muvaffaqiyatli yaratildi!</b>\n\n"
+        f"🎉 <b>Test yaratildi!</b>\n\n"
         f"📌 Fan: <b>{data['title']}</b>\n"
         f"🔢 Savollar: <b>{len(data['answers'])}</b> ta\n"
         f"🆔 Test ID: <code>{code}</code>\n"
-        f"{deadline_info}\n\n"
-        f"📢 Bu ID ni kanalga joylashtiring.\n"
-        f"Ishtirokchilar shu ID orqali test topshiradilar.",
+        f"{dl_text}\n\n"
+        f"📢 Bu ID ni kanalga joylashtiring!",
         reply_markup=main_menu_kb(),
         parse_mode="HTML"
     )
@@ -229,9 +235,10 @@ async def my_tests(message: Message, bot: Bot):
     builder = InlineKeyboardBuilder()
     for t in tests[:20]:
         status = "🔴" if is_deadline_passed(t["deadline"]) else "🟢"
-        dl = t["deadline"] or "∞"
+        dl = t["deadline"] if t["deadline"] else "∞"
+        label = f"{t['title'][:15]}"
         builder.button(
-            text=f"{status} {t['test_code']} | {t['title'][:18]} | ⏰{dl}",
+            text=f"{status} {t['test_code']} | {label} | ⏰{dl}",
             callback_data=f"mytest_{t['id']}"
         )
     builder.adjust(1)
@@ -239,7 +246,7 @@ async def my_tests(message: Message, bot: Bot):
     await message.answer(
         f"📋 <b>Mening testlarim</b> ({len(tests)} ta)\n\n"
         "🟢 Faol  |  🔴 Muddat o'tgan\n\n"
-        "Natijalarni ko'rish uchun testni tanlang:",
+        "Natijalarni ko'rish uchun tanlang:",
         reply_markup=builder.as_markup(),
         parse_mode="HTML"
     )
@@ -276,7 +283,7 @@ async def show_test_results(callback: CallbackQuery):
         return
  
     avg = sum(r["percentage"] for r in results) / len(results)
-    text += f"📊 O'rtacha: {avg:.1f}% | 🏆 Eng yuqori: {results[0]['percentage']:.1f}%\n"
+    text += f"📊 O'rtacha: {avg:.1f}% | 🏆 Yuqori: {results[0]['percentage']:.1f}%\n"
     text += "━━━━━━━━━━━━━━\n\n"
  
     for i, r in enumerate(results[:15], 1):
@@ -286,7 +293,6 @@ async def show_test_results(callback: CallbackQuery):
             f"   ✅ {r['correct']}/{r['total']} ({r['percentage']:.1f}%)\n"
             f"   📅 {r['taken_at'][:16]}\n"
         )
- 
     if len(results) > 15:
         text += f"\n... va yana {len(results)-15} ta"
  
@@ -297,7 +303,6 @@ async def show_test_results(callback: CallbackQuery):
             callback_data=f"rdetail_{r['id']}_{test_id}"
         )
     builder.adjust(1)
- 
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=builder.as_markup())
  
  
@@ -321,10 +326,9 @@ async def show_result_detail(callback: CallbackQuery):
  
     lines = []
     for i, (u, c) in enumerate(zip(user_ans, correct_ans), 1):
-        if u == c:
-            lines.append(f"{i:>3}. ✅ {u}")
-        else:
-            lines.append(f"{i:>3}. ❌ {u} → {c}")
+        icon = "✅" if u == c else "❌"
+        detail = f" → {c}" if u != c else ""
+        lines.append(f"{i:>3}. {icon} {u}{detail}")
  
     header = (
         f"🔍 <b>{result['first_name']} {result['last_name']}</b>\n"
@@ -334,16 +338,13 @@ async def show_result_detail(callback: CallbackQuery):
         f"<b>Tahlil</b> (✅ to'g'ri | ❌ xato → to'g'ri):\n\n"
     )
  
-    chunks = [lines[i:i+50] for i in range(0, len(lines), 50)]
+    chunks = [lines[i:i + 50] for i in range(0, len(lines), 50)]
     await callback.message.answer(
         header + "<code>" + "\n".join(chunks[0]) + "</code>",
         parse_mode="HTML"
     )
     for chunk in chunks[1:]:
-        await callback.message.answer(
-            "<code>" + "\n".join(chunk) + "</code>",
-            parse_mode="HTML"
-        )
+        await callback.message.answer("<code>" + "\n".join(chunk) + "</code>", parse_mode="HTML")
     await callback.answer()
  
  
@@ -364,7 +365,7 @@ async def start_solve_test(message: Message, state: FSMContext, bot: Bot):
  
 @router.message(StateFilter(SolveTest.test_code))
 async def get_test_code(message: Message, state: FSMContext):
-    if message.text == "🔄 Orqaga":
+    if message.text in ["🔄 Orqaga", "❌ Bekor qilish"]:
         await state.clear()
         await message.answer("🏠 Bosh sahifa.", reply_markup=main_menu_kb())
         return
@@ -372,15 +373,14 @@ async def get_test_code(message: Message, state: FSMContext):
     code = message.text.strip().upper()
     test = await db.get_test_by_code(code)
     if not test:
-        await message.answer("❌ Bunday test topilmadi! ID ni tekshirib qayta yuboring.")
+        await message.answer("❌ Bunday test topilmadi!")
         return
  
     if is_deadline_passed(test["deadline"]):
         await message.answer(
             f"⏰ <b>Test muddati tugagan!</b>\n\n"
             f"📌 {test['title']}\n"
-            f"🔴 Deadline: {test['deadline']}\n\n"
-            f"Bu testga javob topshirib bo'lmaydi.",
+            f"🔴 Deadline: {test['deadline']}",
             parse_mode="HTML"
         )
         return
@@ -407,7 +407,7 @@ async def get_test_code(message: Message, state: FSMContext):
  
 @router.message(StateFilter(SolveTest.answers))
 async def check_answers(message: Message, state: FSMContext, bot: Bot):
-    if message.text == "🔄 Orqaga":
+    if message.text in ["🔄 Orqaga", "❌ Bekor qilish"]:
         await state.clear()
         await message.answer("🏠 Bosh sahifa.", reply_markup=main_menu_kb())
         return
@@ -417,7 +417,7 @@ async def check_answers(message: Message, state: FSMContext, bot: Bot):
  
     if is_deadline_passed(test["deadline"]):
         await state.clear()
-        await message.answer("⏰ Kechirasiz, test muddati tugadi!", reply_markup=main_menu_kb())
+        await message.answer("⏰ Test muddati tugadi!", reply_markup=main_menu_kb())
         return
  
     user_answers = normalize_answers(message.text)
@@ -458,14 +458,13 @@ async def check_answers(message: Message, state: FSMContext, bot: Bot):
         author=data["test_author"]
     )
  
-    # Xato javoblar
-    wrong = [(i+1, u, c) for i, (u, c) in enumerate(zip(user_ans, correct_answers)) if u != c]
+    wrong = [(i + 1, u, c) for i, (u, c) in enumerate(zip(user_ans, correct_answers)) if u != c]
     wrong_text = ""
     if wrong:
-        shown = [f"{i}-savol: {u}→{c}" for i, u, c in wrong[:10]]
+        shown = [f"{i}: {u}→{c}" for i, u, c in wrong[:10]]
         wrong_text = "\n\n❌ <b>Xato javoblar:</b>\n" + "  |  ".join(shown)
         if len(wrong) > 10:
-            wrong_text += f"\n... va yana {len(wrong)-10} ta xato"
+            wrong_text += f"\n... va yana {len(wrong) - 10} ta xato"
  
     emoji = "🏆" if pct >= 80 else "✅" if pct >= 60 else "📊"
     await message.answer_photo(
@@ -482,3 +481,4 @@ async def check_answers(message: Message, state: FSMContext, bot: Bot):
         parse_mode="HTML",
         protect_content=True
     )
+ 
