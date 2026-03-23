@@ -628,6 +628,7 @@ async def check_answers(message: Message, state: FSMContext, bot: Bot):
     wrong = [(i+1, u, c) for i, (u, c) in enumerate(zip(user_ans, correct_answers)) if u != c]
     wrong_text = ""
     if wrong:
+        empty = "(bosh)"
         shown = [f"{i}: {u if u != '-' else '(bo\\'sh)'}→{c}" for i, u, c in wrong[:10]]
         wrong_text = "\n\n❌ <b>Xato javoblar:</b>\n" + "  |  ".join(shown)
         if len(wrong) > 10:
