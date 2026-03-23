@@ -26,6 +26,7 @@ async def init_db():
                 title TEXT NOT NULL,
                 answers TEXT NOT NULL,
                 question_count INTEGER NOT NULL,
+                deadline TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -37,6 +38,7 @@ async def init_db():
                 correct INTEGER NOT NULL,
                 total INTEGER NOT NULL,
                 percentage REAL NOT NULL,
+                user_answers TEXT NOT NULL DEFAULT '',
                 cert_path TEXT,
                 taken_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -51,9 +53,16 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                id INTEGER PRIMARY KEY,
+                full_name TEXT,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await db.commit()
  
-        # Config dagi kanallarni bazaga import qilish (bir marta)
+        # Config kanallarini import
         async with db.execute("SELECT COUNT(*) FROM channels WHERE ch_type='required'") as cur:
             count = (await cur.fetchone())[0]
         if count == 0 and REQUIRED_CHANNELS:
@@ -114,15 +123,17 @@ def generate_test_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
  
  
-async def create_test(creator_id, creator_name, title, answers):
+async def create_test(creator_id, creator_name, title, answers, deadline=None):
     code = generate_test_code()
     async with aiosqlite.connect(DB_PATH) as db:
         while True:
             try:
                 await db.execute("""
-                    INSERT INTO tests (creator_id, creator_name, test_code, title, answers, question_count)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (creator_id, creator_name, code, title, answers.upper(), len(answers)))
+                    INSERT INTO tests
+                    (creator_id, creator_name, test_code, title, answers, question_count, deadline)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (creator_id, creator_name, code, title,
+                      answers.upper(), len(answers), deadline))
                 await db.commit()
                 return code
             except Exception:
@@ -145,14 +156,24 @@ async def get_all_tests():
             return await cur.fetchall()
  
  
+async def get_creator_tests(creator_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM tests WHERE creator_id = ? ORDER BY created_at DESC",
+            (creator_id,)
+        ) as cur:
+            return await cur.fetchall()
+ 
+ 
 # ============ NATIJALAR ============
  
-async def save_result(user_id, test_id, correct, total, percentage, cert_path):
+async def save_result(user_id, test_id, correct, total, percentage, user_answers, cert_path=""):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
-            INSERT INTO results (user_id, test_id, correct, total, percentage, cert_path)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (user_id, test_id, correct, total, percentage, cert_path))
+            INSERT INTO results (user_id, test_id, correct, total, percentage, user_answers, cert_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, test_id, correct, total, percentage, user_answers, cert_path))
         await db.commit()
  
  
@@ -169,6 +190,20 @@ async def get_user_results(user_id):
             return await cur.fetchall()
  
  
+async def get_test_results(test_id):
+    """Test bo'yicha barcha ishtirokchilar natijalari"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT r.*, u.first_name, u.last_name, u.phone
+            FROM results r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.test_id = ?
+            ORDER BY r.percentage DESC, r.taken_at ASC
+        """, (test_id,)) as cur:
+            return await cur.fetchall()
+ 
+ 
 async def get_stats():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users") as c:
@@ -182,12 +217,11 @@ async def get_stats():
  
 # ============ KANALLAR ============
  
-async def get_channels(ch_type: str = "required"):
+async def get_channels(ch_type="required"):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM channels WHERE ch_type = ? ORDER BY id",
-            (ch_type,)
+            "SELECT * FROM channels WHERE ch_type = ? ORDER BY id", (ch_type,)
         ) as cur:
             return await cur.fetchall()
  
@@ -201,7 +235,7 @@ async def add_channel(name, username, url, ch_type="required"):
         await db.commit()
  
  
-async def delete_channel(ch_id: int):
+async def delete_channel(ch_id):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM channels WHERE id = ?", (ch_id,))
         await db.commit()
@@ -211,28 +245,13 @@ async def delete_channel(ch_id: int):
  
 async def get_admins():
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS admins (
-                id INTEGER PRIMARY KEY,
-                full_name TEXT,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.commit()
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM admins ORDER BY added_at") as cur:
             return await cur.fetchall()
  
  
-async def add_admin(user_id: int, full_name: str):
+async def add_admin(user_id, full_name):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS admins (
-                id INTEGER PRIMARY KEY,
-                full_name TEXT,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
         await db.execute(
             "INSERT OR IGNORE INTO admins (id, full_name) VALUES (?, ?)",
             (user_id, full_name)
@@ -240,13 +259,13 @@ async def add_admin(user_id: int, full_name: str):
         await db.commit()
  
  
-async def remove_admin(user_id: int):
+async def remove_admin(user_id):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM admins WHERE id = ?", (user_id,))
         await db.commit()
  
  
-async def is_admin_db(user_id: int) -> bool:
+async def is_admin_db(user_id):
     from config import ADMIN_IDS
     if user_id in ADMIN_IDS:
         return True
