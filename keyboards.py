@@ -87,8 +87,8 @@ def design_kb(current=1):
 def admin_main_kb():
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text="📊 Statistika"), KeyboardButton(text="📋 Testlar ro'yxati"))
-    b.row(KeyboardButton(text="📢 Kanallar"), KeyboardButton(text="🔒 Pullik kanallar"))
+    b.row(KeyboardButton(text="📢 Kanallar"), KeyboardButton(text="👥 Foydalanuvchilar"))
     b.row(KeyboardButton(text="🎨 Sertifikat dizaynlari"), KeyboardButton(text="📣 Xabar yuborish"))
-    b.row(KeyboardButton(text="👥 Foydalanuvchilar"), KeyboardButton(text="👨‍💼 Adminlar"))
-    b.row(KeyboardButton(text="⏸ Botni to'xtatish"), KeyboardButton(text="🏠 Asosiy menyu"))
+    b.row(KeyboardButton(text="👨‍💼 Adminlar"), KeyboardButton(text="⏸ Botni to'xtatish"))
+    b.row(KeyboardButton(text="🏠 Asosiy menyu"))
     return b.as_markup(resize_keyboard=True)
