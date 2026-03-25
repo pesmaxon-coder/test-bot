@@ -7,14 +7,14 @@ ADMIN_IDS = [5420944421, 582974676]  # O'z Telegram ID ingiz
 # Majburiy a'zo bo'lish kanallari - o'zingiznikini yozing
 REQUIRED_CHANNELS = [
     {
-        "name": "1 - kanal",
-        "username": "@karetsop",
-        "url": "https://t.me/karetsop"
+        "name": "English Team LC",
+        "username": "@english_team_lc1",
+        "url": "https://t.me/english_team_lc1"
     },
     {
-        "name": "2 - kanal",
-        "username": "@vestelop",
-        "url": "https://t.me/vestelop"
+        "name": "Abbos Mehmonaliyev",
+        "username": "@abbos_mekhmonaliev",
+        "url": "https://t.me/abbos_mekhmonaliev"
     },
 ]
 
