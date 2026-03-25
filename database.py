@@ -72,17 +72,7 @@ async def init_db():
             )
         """)
 
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS paid_channel_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                channel_id INTEGER NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                invite_link TEXT DEFAULT NULL,
-                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                reviewed_at TIMESTAMP DEFAULT NULL
-            )
-        """)
+    
 
         await db.commit()
 
