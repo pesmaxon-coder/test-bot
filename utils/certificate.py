@@ -430,7 +430,7 @@ DESIGNS = {1:d1, 2:d2, 3:d3, 4:d4, 5:d5, 6:d6, 7:d7, 8:d8}
 
 
 def generate_certificate(design_num, full_name, test_title, correct, total, author,
-                          phone1="", phone2=""):
+                          phone1="+998 95 907 3030", phone2="+998 97 984 3030"):
     pct = (correct/total*100) if total > 0 else 0
     dt = datetime.now().strftime("%d.%m.%Y")
     fn = DESIGNS.get(design_num, d1)
