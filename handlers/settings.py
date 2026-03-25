@@ -151,11 +151,3 @@ async def show_certs(message: Message):
     await message.answer(text, reply_markup=main_menu_kb(), parse_mode="HTML")
 
 
-@router.message(F.text == "🔒 Pullik kanallar")
-async def paid_channels(message: Message):
-    await message.answer(
-        "🔒 <b>Pullik kanallar</b>\n\n"
-        "🔧 Bu bo'lim tez orada ochiladi!",
-        reply_markup=main_menu_kb(),
-        parse_mode="HTML"
-    )
