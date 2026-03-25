@@ -72,6 +72,18 @@ async def init_db():
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS paid_channel_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                invite_link TEXT DEFAULT NULL,
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP DEFAULT NULL
+            )
+        """)
+
         await db.commit()
 
         # Migration - eski DB uchun
@@ -320,3 +332,79 @@ async def is_bot_paused():
                 return row is not None and row[0] == "1"
         except Exception:
             return False
+
+# ========== PULLIK KANAL SO'ROVLARI ==========
+
+async def create_paid_request(user_id, channel_id):
+    """Foydalanuvchining pullik kanal so'rovini yaratish"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id FROM paid_channel_requests WHERE user_id=? AND channel_id=? AND status='pending'",
+            (user_id, channel_id)
+        ) as cur:
+            existing = await cur.fetchone()
+        if existing:
+            return None
+        await db.execute(
+            "INSERT INTO paid_channel_requests (user_id, channel_id) VALUES (?, ?)",
+            (user_id, channel_id)
+        )
+        await db.commit()
+        async with db.execute("SELECT last_insert_rowid()") as cur:
+            row = await cur.fetchone()
+            return row[0]
+
+
+async def get_pending_paid_requests():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT r.*, u.first_name, u.last_name, u.phone, c.name as ch_name, c.username as ch_username
+            FROM paid_channel_requests r
+            JOIN users u ON r.user_id = u.id
+            JOIN channels c ON r.channel_id = c.id
+            WHERE r.status = 'pending'
+            ORDER BY r.requested_at ASC
+        """) as cur:
+            return await cur.fetchall()
+
+
+async def get_paid_request(request_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT r.*, u.first_name, u.last_name, u.phone, c.name as ch_name, c.username as ch_username
+            FROM paid_channel_requests r
+            JOIN users u ON r.user_id = u.id
+            JOIN channels c ON r.channel_id = c.id
+            WHERE r.id = ?
+        """, (request_id,)) as cur:
+            return await cur.fetchone()
+
+
+async def approve_paid_request(request_id, invite_link):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE paid_channel_requests SET status='approved', invite_link=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=?",
+            (invite_link, request_id)
+        )
+        await db.commit()
+
+
+async def reject_paid_request(request_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE paid_channel_requests SET status='rejected', reviewed_at=CURRENT_TIMESTAMP WHERE id=?",
+            (request_id,)
+        )
+        await db.commit()
+
+
+async def get_user_paid_request(user_id, channel_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM paid_channel_requests WHERE user_id=? AND channel_id=? ORDER BY requested_at DESC LIMIT 1",
+            (user_id, channel_id)
+        ) as cur:
+            return await cur.fetchone()
