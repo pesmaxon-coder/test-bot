@@ -6,7 +6,7 @@ def main_menu_kb():
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text="✍️ Test yaratish"), KeyboardButton(text="✅ Javobni tekshirish"))
     b.row(KeyboardButton(text="📊 Mening testlarim"), KeyboardButton(text="🎉 Sertifikatlar"))
-    b.row(KeyboardButton(text="⚙️ Sozlamalar"), KeyboardButton(text="🔒 Pullik kanallar"))
+    b.row(KeyboardButton(text="⚙️ Sozlamalar"))
     return b.as_markup(resize_keyboard=True)
 
 
@@ -88,8 +88,7 @@ def admin_main_kb():
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text="📊 Statistika"), KeyboardButton(text="📋 Testlar ro'yxati"))
     b.row(KeyboardButton(text="📢 Kanallar"), KeyboardButton(text="🔒 Pullik kanallar"))
-    b.row(KeyboardButton(text="📩 Kutayotgan so'rovlar"), KeyboardButton(text="🎨 Sertifikat dizaynlari"))
+    b.row(KeyboardButton(text="🎨 Sertifikat dizaynlari"), KeyboardButton(text="📣 Xabar yuborish"))
     b.row(KeyboardButton(text="👥 Foydalanuvchilar"), KeyboardButton(text="👨‍💼 Adminlar"))
-    b.row(KeyboardButton(text="📣 Xabar yuborish"), KeyboardButton(text="⏸ Botni to'xtatish"))
-    b.row(KeyboardButton(text="🏠 Asosiy menyu"))
+    b.row(KeyboardButton(text="⏸ Botni to'xtatish"), KeyboardButton(text="🏠 Asosiy menyu"))
     return b.as_markup(resize_keyboard=True)
