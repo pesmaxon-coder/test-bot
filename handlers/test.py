@@ -259,9 +259,9 @@ async def my_test_menu(callback: CallbackQuery):
     dl = test["deadline"] or "Yo'q"
 
     b = InlineKeyboardBuilder()
-    b.button(text="🏆 Reyting", callback_data="t_rating_" + str(test_id))
+    b.button(text="🏆 Reyting", callback_data="t_rating_" + str(test_id) + "_0")
     b.button(text="📊 Tahlil", callback_data="t_analysis_" + str(test_id))
-    b.button(text="🔍 Batafsil natijalar", callback_data="t_results_" + str(test_id))
+    b.button(text="🔍 Batafsil natijalar", callback_data="t_results_" + str(test_id) + "_0")
     b.adjust(2, 1)
 
     await callback.message.edit_text(
@@ -277,33 +277,61 @@ async def my_test_menu(callback: CallbackQuery):
     )
 
 
+# ===== REYTING (sahifalash bilan) =====
+
 @router.callback_query(F.data.startswith("t_rating_"))
 async def show_rating(callback: CallbackQuery):
-    test_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    test_id = int(parts[2])
+    page = int(parts[3]) if len(parts) > 3 else 0
+    per_page = 20
+
     tests = await db.get_all_tests()
     test = next((t for t in tests if t["id"] == test_id), None)
     results = await db.get_test_results(test_id)
+
     if not results:
         await callback.answer("📭 Hali natijalar yo'q!", show_alert=True)
         return
-    avg = sum(r["percentage"] for r in results) / len(results)
+
+    total = len(results)
+    avg = sum(r["percentage"] for r in results) / total
+    start = page * per_page
+    end = start + per_page
+    page_results = results[start:end]
+
     text = "🏆 <b>" + test["title"] + " — Reyting</b>\n"
-    text += "👥 Jami: " + str(len(results)) + " ta | 📊 O'rtacha: " + str(round(avg, 1)) + "%\n"
+    text += "👥 Jami: <b>" + str(total) + "</b> | 📊 O'rtacha: <b>" + str(round(avg, 1)) + "%</b>\n"
+    text += "📄 " + str(start+1) + "-" + str(min(end, total)) + " / " + str(total) + "\n"
     text += "━━━━━━━━━━━━━━━━━━\n\n"
+
     medals = ["🥇", "🥈", "🥉"]
-    for i, r in enumerate(results[:20], 1):
+    for i, r in enumerate(page_results, start+1):
         m = medals[i-1] if i <= 3 else str(i) + "."
         filled = int(r["percentage"] / 10)
         bar = "█" * filled + "░" * (10 - filled)
         text += (m + " <b>" + r["first_name"] + " " + r["last_name"] + "</b>\n"
                  "   [" + bar + "] " + str(round(r["percentage"], 1)) + "%\n"
                  "   ✅ " + str(r["correct"]) + "/" + str(r["total"]) + "\n\n")
-    if len(results) > 20:
-        text += "... va yana " + str(len(results) - 20) + " ta"
+
     b = InlineKeyboardBuilder()
+    nav = []
+    if page > 0:
+        nav.append(("⬅️ Oldingi", "t_rating_" + str(test_id) + "_" + str(page - 1)))
+    if end < total:
+        nav.append(("Keyingi ➡️", "t_rating_" + str(test_id) + "_" + str(page + 1)))
+    for label, cb in nav:
+        b.button(text=label, callback_data=cb)
     b.button(text="◀️ Orqaga", callback_data="mytest_" + str(test_id))
+    if nav:
+        b.adjust(len(nav), 1)
+    else:
+        b.adjust(1)
+
     await callback.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
 
+
+# ===== TAHLIL =====
 
 @router.callback_query(F.data.startswith("t_analysis_"))
 async def show_analysis(callback: CallbackQuery):
@@ -389,26 +417,54 @@ async def all_questions(callback: CallbackQuery):
     await callback.answer()
 
 
+# ===== BATAFSIL NATIJALAR (sahifalash bilan) =====
+
 @router.callback_query(F.data.startswith("t_results_"))
 async def test_results_list(callback: CallbackQuery):
-    test_id = int(callback.data.split("_")[2])
+    parts = callback.data.split("_")
+    test_id = int(parts[2])
+    page = int(parts[3]) if len(parts) > 3 else 0
+    per_page = 15
+
     results = await db.get_test_results(test_id)
     if not results:
         await callback.answer("📭 Natijalar yo'q!", show_alert=True)
         return
+
+    total = len(results)
+    start = page * per_page
+    end = start + per_page
+    page_results = results[start:end]
+
+    text = ("🔍 <b>Batafsil natijalar</b> (" + str(total) + " ta)\n"
+            "📄 " + str(start+1) + "-" + str(min(end, total)) + " / " + str(total) + "\n\n")
+
+    for i, r in enumerate(page_results, start+1):
+        emoji = "🏆" if r["percentage"] >= 80 else "✅" if r["percentage"] >= 60 else "📊"
+        text += str(i) + ". " + emoji + " " + r["first_name"] + " " + r["last_name"] + " — " + str(round(r["percentage"], 1)) + "%\n"
+
     b = InlineKeyboardBuilder()
-    for r in results[:15]:
+    for r in page_results:
         emoji = "🏆" if r["percentage"] >= 80 else "✅" if r["percentage"] >= 60 else "📊"
         b.button(
             text=emoji + " " + r["first_name"] + " " + r["last_name"] + " (" + str(round(r["percentage"])) + "%)",
             callback_data="rdetail_" + str(r["id"]) + "_" + str(test_id)
         )
+
+    nav = []
+    if page > 0:
+        nav.append(("⬅️ Oldingi", "t_results_" + str(test_id) + "_" + str(page - 1)))
+    if end < total:
+        nav.append(("Keyingi ➡️", "t_results_" + str(test_id) + "_" + str(page + 1)))
+    for label, cb in nav:
+        b.button(text=label, callback_data=cb)
     b.button(text="◀️ Orqaga", callback_data="mytest_" + str(test_id))
-    b.adjust(1)
-    text = "🔍 <b>Batafsil natijalar</b> (" + str(len(results)) + " ta)\n\n"
-    for i, r in enumerate(results[:15], 1):
-        emoji = "🏆" if r["percentage"] >= 80 else "✅" if r["percentage"] >= 60 else "📊"
-        text += str(i) + ". " + emoji + " " + r["first_name"] + " " + r["last_name"] + " — " + str(round(r["percentage"], 1)) + "%\n"
+
+    if nav:
+        b.adjust(1, len(nav), 1)
+    else:
+        b.adjust(1)
+
     await callback.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
