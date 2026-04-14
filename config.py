@@ -7,9 +7,9 @@ ADMIN_IDS = [5420944421, 582974676]  # O'z Telegram ID ingiz
 # Majburiy a'zo bo'lish kanallari - o'zingiznikini yozing
 REQUIRED_CHANNELS = [
     {
-        "name": "English Team LC",
-        "username": "@english_team_lc1",
-        "url": "https://t.me/english_team_lc1"
+        "name": "CEFR_team",
+        "username": "@CEFRteam",
+        "url": "https://t.me/CEFRteam"
     },
     {
         "name": "Abbos Mehmonaliyev",
