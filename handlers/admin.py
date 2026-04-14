@@ -184,37 +184,52 @@ async def admin_tests_back(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("atu_"))
 async def admin_test_users(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    test_id = int(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
+    per_page = 20
     if not await is_admin(callback.from_user.id):
         return
-    test_id = int(callback.data.split("_")[1])
     tests = await db.get_all_tests()
     test = next((t for t in tests if t["id"] == test_id), None)
     results = await db.get_test_results(test_id)
     if not results:
         await callback.answer("📭 Hali hech kim topshirmagan!", show_alert=True)
         return
-    avg = sum(r["percentage"] for r in results) / len(results)
+    total = len(results)
+    avg = sum(r["percentage"] for r in results) / total
+    start = page * per_page
+    end = start + per_page
+    page_results = results[start:end]
     medals = ["🥇", "🥈", "🥉"]
     text = ("👥 <b>" + test["title"] + " — Ishtirokchilar</b>\n"
-            "Jami: <b>" + str(len(results)) + "</b> | O'rtacha: <b>" + str(round(avg, 1)) + "%</b>\n\n")
-    for i, r in enumerate(results[:20], 1):
+            "Jami: <b>" + str(total) + "</b> | O'rtacha: <b>" + str(round(avg, 1)) + "%</b>\n"
+            "📄 " + str(start+1) + "-" + str(min(end, total)) + " / " + str(total) + "\n\n")
+    for i, r in enumerate(page_results, start+1):
         m = medals[i-1] if i <= 3 else str(i) + "."
         emoji = "🏆" if r["percentage"] >= 80 else "✅" if r["percentage"] >= 60 else "📊"
         text += (m + " " + emoji + " <b>" + r["first_name"] + " " + r["last_name"] + "</b>\n"
                  "   ✅ " + str(r["correct"]) + "/" + str(r["total"])
                  + " (" + str(round(r["percentage"], 1)) + "%) | 📅 " + r["taken_at"][:10] + "\n\n")
-    if len(results) > 20:
-        text += "... va yana " + str(len(results) - 20) + " ta"
-
     b = InlineKeyboardBuilder()
-    for r in results[:10]:
+    for r in page_results:
         emoji = "🏆" if r["percentage"] >= 80 else "✅" if r["percentage"] >= 60 else "📊"
         b.button(
             text=emoji + " " + r["first_name"] + " " + r["last_name"] + " (" + str(round(r["percentage"])) + "%)",
             callback_data="rdetail_" + str(r["id"]) + "_" + str(test_id)
         )
+    nav = []
+    if page > 0:
+        nav.append(("⬅️ Oldingi", "atu_" + str(test_id) + "_" + str(page - 1)))
+    if end < total:
+        nav.append(("Keyingi ➡️", "atu_" + str(test_id) + "_" + str(page + 1)))
+    for label, cb in nav:
+        b.button(text=label, callback_data=cb)
     b.button(text="◀️ Orqaga", callback_data="atd_" + str(test_id))
-    b.adjust(1)
+    if nav:
+        b.adjust(1, len(nav), 1)
+    else:
+        b.adjust(1)
     await callback.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="HTML")
 
 
@@ -279,18 +294,52 @@ async def admin_del_test_yes(callback: CallbackQuery):
 async def list_users(message: Message):
     if not await is_admin(message.from_user.id):
         return
+    await show_users_page(message, page=0)
+
+
+async def show_users_page(target, page=0, edit=False):
     users = await db.get_all_users()
     if not users:
-        await message.answer("📭 Foydalanuvchilar yo'q.")
+        text = "📭 Foydalanuvchilar yo'q."
+        if edit:
+            await target.message.edit_text(text)
+        else:
+            await target.answer(text)
         return
-    text = "👥 <b>Foydalanuvchilar</b> (" + str(len(users)) + " ta):\n\n"
-    for i, u in enumerate(users[:25], 1):
+    per_page = 25
+    total = len(users)
+    start = page * per_page
+    end = start + per_page
+    page_users = users[start:end]
+    text = ("👥 <b>Foydalanuvchilar</b> (" + str(total) + " ta)\n"
+            "📄 " + str(start+1) + "-" + str(min(end, total)) + " / " + str(total) + "\n\n")
+    for i, u in enumerate(page_users, start+1):
         text += (str(i) + ". 👤 <b>" + u["first_name"] + " " + u["last_name"] + "</b>\n"
                  "   📱 " + u["phone"] + "\n"
                  "   🆔 <code>" + str(u["id"]) + "</code>\n\n")
-    if len(users) > 25:
-        text += "... va yana " + str(len(users) - 25) + " ta"
-    await message.answer(text, parse_mode="HTML")
+    b = InlineKeyboardBuilder()
+    nav = []
+    if page > 0:
+        nav.append(("⬅️ Oldingi", "userspage_" + str(page - 1)))
+    if end < total:
+        nav.append(("Keyingi ➡️", "userspage_" + str(page + 1)))
+    for label, cb in nav:
+        b.button(text=label, callback_data=cb)
+    if nav:
+        b.adjust(len(nav))
+    if edit:
+        await target.message.edit_text(text, reply_markup=b.as_markup() if nav else None, parse_mode="HTML")
+    else:
+        await target.answer(text, reply_markup=b.as_markup() if nav else None, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("userspage_"))
+async def users_page_cb(callback: CallbackQuery):
+    if not await is_admin(callback.from_user.id):
+        return
+    page = int(callback.data.split("_")[1])
+    await show_users_page(callback, page=page, edit=True)
+    await callback.answer()
 
 
 # ===== KANALLAR =====
