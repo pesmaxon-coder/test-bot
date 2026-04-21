@@ -700,5 +700,4 @@ async def do_check_answers(message: Message, state: FSMContext, bot: Bot):
         photo=BufferedInputFile(cert_buf.read(), filename="sertifikat.png"),
         caption=caption,
         parse_mode="HTML",
-        protect_content=True
     )
