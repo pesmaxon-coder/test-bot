@@ -1,6 +1,6 @@
 import os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8517462613:AAHYWPrkstm2axeQ9cS_faSTouTwebRa130")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 ADMIN_IDS = [5420944421, 582974676]  # O'z Telegram ID ingiz
 
