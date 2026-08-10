@@ -72,6 +72,21 @@ async def init_db():
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS broadcasts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                sender_name TEXT NOT NULL,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                preview TEXT,
+                sent_count INTEGER DEFAULT 0,
+                failed_count INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'sent',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
     
 
         await db.commit()
@@ -323,6 +338,45 @@ async def is_bot_paused():
         except Exception:
             return False
 
+
+
+# ========== XABARLARNI BOSHQARISH (BROADCAST LOG) ==========
+
+async def log_broadcast(sender_id, sender_name, chat_id, message_id, preview, sent_count, failed_count, status="sent"):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "INSERT INTO broadcasts (sender_id, sender_name, chat_id, message_id, preview, sent_count, failed_count, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (sender_id, sender_name, chat_id, message_id, preview[:200] if preview else "", sent_count, failed_count, status)
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def get_broadcasts(limit=15):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM broadcasts ORDER BY created_at DESC LIMIT ?", (limit,)
+        ) as cur:
+            return await cur.fetchall()
+
+
+async def get_broadcast(broadcast_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM broadcasts WHERE id = ?", (broadcast_id,)
+        ) as cur:
+            return await cur.fetchone()
+
+
+async def mark_broadcast_recalled(broadcast_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE broadcasts SET status='recalled' WHERE id = ?", (broadcast_id,)
+        )
+        await db.commit()
 
 
 async def reject_paid_request(request_id):
