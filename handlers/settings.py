@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 import database as db
-from keyboards import main_menu_kb, settings_kb, design_kb, cancel_kb
+from keyboards import main_menu_kb, settings_kb, design_kb, cancel_kb, admin_main_kb
 from utils.certificate import generate_certificate
 
 router = Router()
@@ -33,6 +33,9 @@ async def settings_menu(message: Message):
 @router.message(F.text == "🔄 Orqaga")
 async def go_back(message: Message, state: FSMContext):
     await state.clear()
+    if await db.is_admin_db(message.from_user.id):
+        await message.answer("👨‍💼 Admin panel.", reply_markup=admin_main_kb())
+        return
     await message.answer("🏠 Bosh sahifa.", reply_markup=main_menu_kb())
 
 
@@ -149,5 +152,3 @@ async def show_certs(message: Message):
                  + " (" + str(round(r["percentage"], 1)) + "%)\n"
                  "   🆔 " + r["test_code"] + " | 📅 " + r["taken_at"][:10] + "\n\n")
     await message.answer(text, reply_markup=main_menu_kb(), parse_mode="HTML")
-
-
