@@ -8,7 +8,7 @@ from datetime import datetime
 
 import database as db
 from config import ADMIN_IDS
-from keyboards import main_menu_kb, admin_main_kb, cancel_kb
+from keyboards import main_menu_kb, admin_main_kb, cancel_kb, msg_management_kb, broadcast_confirm_kb
 
 router = Router()
 
@@ -39,6 +39,7 @@ class AddAdmin(StatesGroup):
 
 class Broadcast(StatesGroup):
     msg = State()
+    confirm = State()
 
 
 # ===== ADMIN KIRISH =====
@@ -593,7 +594,32 @@ async def delete_admin(callback: CallbackQuery):
         pass
 
 
-# ===== XABAR YUBORISH =====
+# ===== XABARLARNI BOSHQARISH =====
+
+@router.message(F.text == "🛡 Xabarlarni boshqarish")
+async def msg_management_menu(message: Message, state: FSMContext):
+    if not await is_admin(message.from_user.id):
+        return
+    await state.clear()
+    last = await db.get_broadcasts(limit=1)
+    last_info = "Hali xabar yuborilmagan."
+    if last:
+        b0 = last[0]
+        last_info = (
+            "🕓 Oxirgi: <b>" + b0["created_at"][:16] + "</b>\n"
+            "👤 Yuborgan: " + b0["sender_name"] + "\n"
+            "✅ " + str(b0["sent_count"]) + " ta yetdi, ❌ " + str(b0["failed_count"]) + " ta xato"
+        )
+    await message.answer(
+        "🛡 <b>Xabarlarni boshqarish</b>\n\n"
+        "Bu yerda barcha foydalanuvchilarga yuboriladigan xabarlarni nazorat qilasiz:\n"
+        "• Yangi xabar yuborish (tasdiqlash bilan)\n"
+        "• Yuborilgan xabarlar tarixi\n"
+        "• Kim, qachon, nima yuborganini tekshirish\n\n" + last_info,
+        reply_markup=msg_management_kb(),
+        parse_mode="HTML"
+    )
+
 
 @router.message(F.text == "📣 Xabar yuborish")
 async def start_broadcast(message: Message, state: FSMContext):
@@ -603,35 +629,161 @@ async def start_broadcast(message: Message, state: FSMContext):
     await message.answer(
         "📣 <b>Xabar yuborish</b>\n\n"
         "Barcha foydalanuvchilarga yuboriladigan xabarni yozing:\n"
-        "(Matn, rasm yoki video bo'lishi mumkin)",
+        "(Matn, rasm yoki video bo'lishi mumkin)\n\n"
+        "⚠️ Xabar avval sizga <b>preview</b> tarzida ko'rsatiladi va faqat siz tasdiqlagandan keyin yuboriladi.",
         reply_markup=cancel_kb(),
         parse_mode="HTML"
     )
 
 
+MENU_BUTTON_TEXTS = {
+    "❌ Bekor qilish", "🔄 Orqaga", "📊 Statistika", "📋 Testlar ro'yxati",
+    "📢 Kanallar", "👥 Foydalanuvchilar", "🎨 Sertifikat dizaynlari",
+    "🛡 Xabarlarni boshqarish", "👨‍💼 Adminlar", "⏸ Botni to'xtatish",
+    "🏠 Asosiy menyu", "📣 Xabar yuborish", "📜 Xabarlar tarixi",
+    "🔍 Oxirgi xabarni tekshirish",
+}
+
+
 @router.message(Broadcast.msg)
-async def do_broadcast(message: Message, state: FSMContext):
-    if message.text in ["❌ Bekor qilish", "🔄 Orqaga"]:
+async def preview_broadcast(message: Message, state: FSMContext):
+    if message.text in MENU_BUTTON_TEXTS:
         await state.clear()
-        await message.answer("❌ Bekor qilindi.", reply_markup=admin_main_kb())
+        await message.answer("❌ Xabar yuborish bekor qilindi.", reply_markup=admin_main_kb())
         return
+    users = await db.get_all_users()
+    await state.update_data(
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+        preview_text=(message.text or message.caption or "[media]")
+    )
+    await state.set_state(Broadcast.confirm)
+    await message.answer(
+        "👆 <b>Yuboriladigan xabar shu ko'rinishda edi.</b>\n\n"
+        "📊 Qabul qiluvchilar: <b>" + str(len(users)) + "</b> ta foydalanuvchi\n"
+        "👤 Yuboruvchi: " + message.from_user.full_name + " (<code>" + str(message.from_user.id) + "</code>)\n\n"
+        "❗ Tasdiqlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.",
+        reply_markup=broadcast_confirm_kb(),
+        parse_mode="HTML"
+    )
+
+
+@router.message(Broadcast.confirm, F.text == "✅ Ha, yuborish")
+async def do_broadcast(message: Message, state: FSMContext):
+    data = await state.get_data()
     await state.clear()
+    src_chat_id = data.get("chat_id")
+    src_message_id = data.get("message_id")
+    preview_text = data.get("preview_text", "")
+    if not src_chat_id or not src_message_id:
+        await message.answer("❌ Xabar topilmadi, qaytadan urinib ko'ring.", reply_markup=msg_management_kb())
+        return
+
     users = await db.get_all_users()
     sent, failed = 0, 0
     await message.answer("📤 Yuborilmoqda... (" + str(len(users)) + " ta foydalanuvchi)")
     for user in users:
         try:
-            await message.copy_to(user["id"], protect_content=True)
+            await message.bot.copy_message(
+                chat_id=user["id"],
+                from_chat_id=src_chat_id,
+                message_id=src_message_id,
+                protect_content=True
+            )
             sent += 1
         except Exception:
             failed += 1
+
+    await db.log_broadcast(
+        sender_id=message.from_user.id,
+        sender_name=message.from_user.full_name,
+        chat_id=src_chat_id,
+        message_id=src_message_id,
+        preview=preview_text,
+        sent_count=sent,
+        failed_count=failed,
+        status="sent"
+    )
+
     await message.answer(
         "✅ <b>Xabar yuborildi!</b>\n\n"
         "✅ Muvaffaqiyatli: <b>" + str(sent) + "</b>\n"
-        "❌ Xatolik: <b>" + str(failed) + "</b>",
-        reply_markup=admin_main_kb(),
+        "❌ Xatolik: <b>" + str(failed) + "</b>\n\n"
+        "ℹ️ Bu xabar \"📜 Xabarlar tarixi\" bo'limida saqlandi.",
+        reply_markup=msg_management_kb(),
         parse_mode="HTML"
     )
+
+
+@router.message(Broadcast.confirm, F.text == "❌ Bekor qilish")
+async def cancel_broadcast_confirm(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Xabar yuborish bekor qilindi. Hech kimga yuborilmadi.", reply_markup=msg_management_kb())
+
+
+@router.message(Broadcast.confirm)
+async def broadcast_confirm_fallback(message: Message, state: FSMContext):
+    if message.text in MENU_BUTTON_TEXTS:
+        await state.clear()
+        await message.answer("❌ Xabar yuborish bekor qilindi.", reply_markup=admin_main_kb())
+        return
+    await message.answer(
+        "❗ Iltimos, \"✅ Ha, yuborish\" yoki \"❌ Bekor qilish\" tugmalaridan birini tanlang.",
+        reply_markup=broadcast_confirm_kb()
+    )
+
+
+# ===== XABARLAR TARIXI =====
+
+@router.message(F.text == "📜 Xabarlar tarixi")
+async def broadcast_history(message: Message):
+    if not await is_admin(message.from_user.id):
+        return
+    items = await db.get_broadcasts(limit=15)
+    if not items:
+        await message.answer("📭 Hali hech qanday xabar yuborilmagan.", reply_markup=msg_management_kb())
+        return
+    text = "📜 <b>Oxirgi yuborilgan xabarlar</b> (so'nggi " + str(len(items)) + " ta)\n\n"
+    for i, bcast in enumerate(items, 1):
+        status_emoji = "🔁" if bcast["status"] == "recalled" else "✅"
+        preview = (bcast["preview"] or "")[:60].replace("\n", " ")
+        text += (
+            str(i) + ". " + status_emoji + " <b>" + bcast["created_at"][:16] + "</b>\n"
+            "   👤 " + bcast["sender_name"] + " (<code>" + str(bcast["sender_id"]) + "</code>)\n"
+            "   📝 " + (preview if preview else "[media]") + "\n"
+            "   ✅ " + str(bcast["sent_count"]) + " | ❌ " + str(bcast["failed_count"]) + "\n\n"
+        )
+    await message.answer(text, reply_markup=msg_management_kb(), parse_mode="HTML")
+
+
+@router.message(F.text == "🔍 Oxirgi xabarni tekshirish")
+async def check_last_broadcast(message: Message):
+    if not await is_admin(message.from_user.id):
+        return
+    items = await db.get_broadcasts(limit=1)
+    if not items:
+        await message.answer("📭 Hali hech qanday xabar yuborilmagan.", reply_markup=msg_management_kb())
+        return
+    bcast = items[0]
+    await message.answer(
+        "🔍 <b>Eng oxirgi yuborilgan xabar</b>\n\n"
+        "🕓 Vaqt: <b>" + bcast["created_at"] + "</b>\n"
+        "👤 Yuborgan: " + bcast["sender_name"] + " (<code>" + str(bcast["sender_id"]) + "</code>)\n"
+        "✅ Yetgan: <b>" + str(bcast["sent_count"]) + "</b> | ❌ Xato: <b>" + str(bcast["failed_count"]) + "</b>\n\n"
+        "📝 <b>Matn (qisqartirilgan):</b>\n" + (bcast["preview"] or "[media, matn yo'q]") + "\n\n"
+        "💡 Agar bu xabarni siz yubormagan bo'lsangiz — bu boshqa admin ID orqali yuborilgan degani. "
+        "\"👨‍💼 Adminlar\" bo'limidan kim admin ekanini tekshiring va shubhali ID ni o'chiring.",
+        reply_markup=msg_management_kb(),
+        parse_mode="HTML"
+    )
+    try:
+        await message.bot.copy_message(
+            chat_id=message.chat.id,
+            from_chat_id=bcast["chat_id"],
+            message_id=bcast["message_id"]
+        )
+    except Exception:
+        await message.answer("⚠️ Asl xabar nusxasini ko'rsatib bo'lmadi (o'chirilgan yoki eskirgan bo'lishi mumkin).")
 
 
 # ===== BOT TO'XTATISH =====
