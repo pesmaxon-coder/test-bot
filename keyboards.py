@@ -88,7 +88,21 @@ def admin_main_kb():
     b = ReplyKeyboardBuilder()
     b.row(KeyboardButton(text="📊 Statistika"), KeyboardButton(text="📋 Testlar ro'yxati"))
     b.row(KeyboardButton(text="📢 Kanallar"), KeyboardButton(text="👥 Foydalanuvchilar"))
-    b.row(KeyboardButton(text="🎨 Sertifikat dizaynlari"), KeyboardButton(text="📣 Xabar yuborish"))
+    b.row(KeyboardButton(text="🎨 Sertifikat dizaynlari"), KeyboardButton(text="🛡 Xabarlarni boshqarish"))
     b.row(KeyboardButton(text="👨‍💼 Adminlar"), KeyboardButton(text="⏸ Botni to'xtatish"))
     b.row(KeyboardButton(text="🏠 Asosiy menyu"))
+    return b.as_markup(resize_keyboard=True)
+
+
+def msg_management_kb():
+    b = ReplyKeyboardBuilder()
+    b.row(KeyboardButton(text="📣 Xabar yuborish"), KeyboardButton(text="📜 Xabarlar tarixi"))
+    b.row(KeyboardButton(text="🔍 Oxirgi xabarni tekshirish"))
+    b.row(KeyboardButton(text="🔄 Orqaga"))
+    return b.as_markup(resize_keyboard=True)
+
+
+def broadcast_confirm_kb():
+    b = ReplyKeyboardBuilder()
+    b.row(KeyboardButton(text="✅ Ha, yuborish"), KeyboardButton(text="❌ Bekor qilish"))
     return b.as_markup(resize_keyboard=True)
